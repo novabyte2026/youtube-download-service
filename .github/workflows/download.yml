@@ -1,0 +1,51 @@
+name: Download YouTube Video
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: "קישור לסרטון יוטיוב"
+        required: true
+      request_id:
+        description: "מזהה בקשה (לא חובה, לצורך מעקב)"
+        required: false
+        default: "manual"
+
+jobs:
+  download-and-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -U yt-dlp google-api-python-client google-auth
+
+      - name: Download video
+        run: |
+          mkdir -p downloads
+          yt-dlp \
+            --extractor-args "youtube:player_client=android" \
+            -f "best[height<=720]" \
+            -o "downloads/%(title).100s.%(ext)s" \
+            "${{ github.event.inputs.video_url }}"
+
+      - name: Save Google credentials
+        run: echo '${{ secrets.GCP_SA_KEY }}' > gha-creds.json
+
+      - name: Upload to Google Drive
+        env:
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+        run: python upload_to_drive.py downloads
+
+      - name: Clean up credentials
+        if: always()
+        run: rm -f gha-creds.json
